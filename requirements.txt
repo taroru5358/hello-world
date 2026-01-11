@@ -1,0 +1,47 @@
+# 既知の脆弱性がある古いバージョンを指定 - GHAS検証用
+# 警告: 本番環境では絶対に使用しないでください
+
+# Flask with known vulnerabilities
+Flask==0.12.2
+
+# Requests with known security issues
+requests==2.6.0
+
+# Pillow with CVE vulnerabilities
+Pillow==6.0.0
+
+# PyYAML with arbitrary code execution vulnerability
+PyYAML==3.12
+
+# Django with known vulnerabilities
+Django==1.11.0
+
+# Jinja2 with security issues
+Jinja2==2.9.6
+
+# Werkzeug (Flask dependency) with vulnerabilities
+Werkzeug==0.11.11
+
+# SQLAlchemy with known issues
+SQLAlchemy==1.1.0
+
+# Cryptography with known vulnerabilities
+cryptography==1.5.0
+
+# paramiko with security issues
+paramiko==2.1.1
+
+# urllib3 with vulnerabilities
+urllib3==1.19.1
+
+# Bottle web framework with security issues
+bottle==0.12.8
+
+# WerkzeugSecure - outdated
+werkzeug-secure==0.1.0
+
+# Other vulnerable dependencies
+pyyaml==3.10
+six==1.10.0
+setuptools==28.0.0
+pip==7.1.2
