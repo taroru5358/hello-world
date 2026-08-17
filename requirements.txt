@@ -26,7 +26,7 @@ Werkzeug==0.11.11
 SQLAlchemy==1.1.0
 
 # Cryptography with known vulnerabilities
-cryptography==1.5.0
+cryptography==50.0.0
 
 # paramiko with security issues
 paramiko==2.1.1
