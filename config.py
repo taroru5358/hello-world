@@ -4,16 +4,19 @@
 """
 
 import os
-
+from typing import Type
 
 class Config:
     """ベース設定"""
 
     # ==================== Hardcoded Secrets ====================
-    # 脆弱性: Hardcoded Credentials
-    # APIキーをコード内にハードコードしている
+    # 脆弱性: Hardcoded Credentials（ダミー）
+    # 注意: 以下の値は検証・テスト目的のダミーシークレットです。実環境ではこれらをコードにハードコーディングしないでください。
+    # 秘密情報は環境変数やシークレットマネージャ（例: AWS Secrets Manager、GCP Secret Manager）を使用して安全に管理してください。
+    # このファイルはGHAS検証用の例であり、実運用環境では適切なシークレット管理を行ってください。
 
     # AWS認証情報（ダミー）
+    # 注意: 以下はダミーのAWS認証情報（ハードコード）。実環境では環境変数やシークレットマネージャを使用してください。
     AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE"
     AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
@@ -34,13 +37,16 @@ class Config:
     GOOGLE_CLIENT_ID = "123456789-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com"
     GOOGLE_CLIENT_SECRET = "GOCSPX-1234567890abcdefghijklmnopqrstuvwxyz"
 
-    # Database Configuration
+    # Database Configuration (ダミー)
+    # 注意: DB接続文字列に認証情報を含めないでください。環境変数やシークレットマネージャを使用してください。
     SQLALCHEMY_DATABASE_URI = "postgresql://admin:SecurePassword123!@db.example.com:5432/production_db"
 
-    # Secret Key for Flask Sessions
+    # Secret Key for Flask Sessions (ダミー)
+    # 注意: Flask の `SECRET_KEY` は機密情報です。実環境では環境変数やシークレットマネージャで管理してください。
     SECRET_KEY = "super-secret-key-do-not-expose-this-key-in-production"
 
-    # JWT Secret
+    # JWT Secret (ダミー)
+    # 注意: JWTシークレットはトークンの署名を守る重要な情報です。コードにハードコーディングしないでください。
     JWT_SECRET = "my-secret-jwt-key-for-token-authentication"
 
     # Private Key for Encryption
@@ -97,19 +103,20 @@ class TestingConfig(Config):
 
 
 # 環境に応じた設定を選択
-def get_config(env=None):
+def get_config(env: str | None = None) -> Type:
     """環境に応じた設定オブジェクトを返す"""
     if env is None:
-        env = os.environ.get('FLASK_ENV', 'development')
-
-    config_map = {
-        'development': DevelopmentConfig,
-        'production': ProductionConfig,
-        'testing': TestingConfig,
+        env = os.environ.get("FLASK_ENV", "development")
+    env_key = str(env).lower()
+    mapping = {
+        "development": DevelopmentConfig,
+        "production": ProductionConfig,
+        "testing": TestingConfig,
     }
-
-    return config_map.get(env, DevelopmentConfig)
+    return mapping.get(env_key, DevelopmentConfig)
 
 
 # グローバル設定オブジェクト
+# 
 current_config = get_config()
+
