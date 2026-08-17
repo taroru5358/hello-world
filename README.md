@@ -118,6 +118,53 @@
 
 3. Security タブでアラートを確認
 
+## クイックスタート — すぐに動かす
+
+以下はローカルや Docker で素早く動作確認する手順です。実行前にこのリポジトリが教育・検証目的で脆弱なコードを含むことをご理解ください。
+
+### 前提
+- Python 3.11 がインストールされていること（または Docker を使用）
+- Docker を使う場合は Docker Engine が動作していること
+
+### 1) ローカルで実行（開発）
+```sh
+# 仮想環境の作成（推奨）
+python -m venv .venv
+source .venv/bin/activate
+
+# 依存関係をインストール
+pip install -r requirements.txt
+
+# サンプルの環境変数を複製
+cp .env.example .env
+
+# アプリを実行（web_app.py のデバッグサーバーを使用）
+python web_app.py
+# アクセス: http://localhost:5000
+```
+
+### 2) Docker で実行（素早く確認する場合）
+```sh
+# イメージのビルド
+docker build -t ghas-demo:latest .
+
+# .env を用意してコンテナ実行（ポート 5000 を公開）
+cp .env.example .env
+docker run --rm -p 5000:5000 --env-file .env ghas-demo:latest
+```
+Docker イメージは `Dockerfile` を使用し、Gunicorn で `web_app:app` を起動します。
+
+### 3) テストの実行
+```sh
+# pytest をインストールして実行
+pip install pytest
+pytest
+```
+
+### 補足
+- `requirements.txt` には検証用に古い/脆弱なバージョンが含まれることがあります。実運用用にコピーして使わないでください。
+- 実際のシークレットは `.env` に入れず、Docker secrets または環境変数管理を使用してください。
+
 ## 学習用コンテンツ
 
 各脆弱性についての詳細は以下を参照:
