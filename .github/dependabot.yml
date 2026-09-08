@@ -1,4 +1,5 @@
 version: 2
+# 2026-09-08: public化に伴い再評価を促すためのtouch (内容変更なし)
 updates:
   # Python (pip) の依存関係を監視
   - package-ecosystem: "pip"
