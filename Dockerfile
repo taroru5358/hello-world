@@ -6,7 +6,7 @@
 # - Dependabot docker はタグ追従PRのみで EOL 警告を出さないことを検証する
 # - EOL 検知は Trivy --exit-on-eol が担当 (.github/workflows/trivy-eol.yml)
 # 警告: 本番環境では絶対に使用しないこと
-FROM python:3.8-slim-bullseye
+FROM python:3.13-slim-bullseye
 
 WORKDIR /app
 
