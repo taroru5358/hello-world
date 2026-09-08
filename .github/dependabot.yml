@@ -20,3 +20,14 @@ updates:
     rebase-strategy: "auto"
     # バージョン戦略：majicor バージョンを同時に更新しない
     versioning-strategy: "auto"
+
+  # Docker ベースイメージのタグ追従 (LTS切れ検証用)
+  # 注意: EOL警告は出さない。新タグが出たら更新PRを作るのみ。
+  # EOL検知は Trivy --exit-on-eol (.github/workflows/trivy-eol.yml) が担当。
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
