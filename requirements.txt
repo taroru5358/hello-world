@@ -14,7 +14,7 @@ Pillow==6.0.0
 PyYAML==3.12
 
 # Django with known vulnerabilities
-Django==1.11.0
+Django==6.1.1
 
 # Jinja2 with security issues
 Jinja2==2.9.6
