@@ -39,3 +39,4 @@
 ## 変更履歴
 - 2026-09-08: 初版作成
 - 2026-09-08: ベースをpython:3.8-slim→python:3.8-slim-bullseyeに変更。理由: 素タグはbookworm再ビルドでOSがEOLにならず、Trivy --exit-on-eolが反応しなかった (実測debian 12.7)。bullseyeピンでdebian 11.11のEOL検出を確認。
+- 2026-09-08: public化決定。監査で個人ID3種0件・本物シークレットなしを確認。履歴メール160294w@gmail.com→noreply書換え、feature枝の旧ID URL修正後にpublic化する方針。
