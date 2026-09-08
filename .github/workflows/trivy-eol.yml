@@ -1,0 +1,63 @@
+name: "Trivy EOL Gate"
+
+# 目的: Dependabotでは検知できないベースイメージのLTS切れ・EOLを検知する
+# 対比: Dependabot docker=タグ追従PRのみ / Trivy --exit-on-eol=EOLでCI失敗
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/trivy-eol.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+  schedule:
+    - cron: '0 1 * * 1'  # 毎週月曜01:00に定期チェック
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  eol-gate:
+    name: EOL Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t hello-world:eol-test .
+
+      - name: Scan with Trivy (EOL gate)
+        # --exit-on-eol 1 でEOL OS検出時に終了コード1にしてCIを失敗させる
+        # --exit-code 1 でHIGH/CRITICAL検出時も失敗させる
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.58.0 image \
+              --exit-on-eol 1 \
+              --exit-code 1 \
+              --severity HIGH,CRITICAL \
+              hello-world:eol-test
+
+      - name: Scan with Trivy (SARIF for Code Scanning)
+        if: always()
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/workspace \
+            aquasec/trivy:0.58.0 image \
+              --format sarif \
+              --output /workspace/trivy-results.sarif \
+              --severity HIGH,CRITICAL \
+              hello-world:eol-test || true
+
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-eol
