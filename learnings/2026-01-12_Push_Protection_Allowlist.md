@@ -27,7 +27,7 @@ GHAS検証用のダミーシークレットをGitHubへpushする際に、Secret
 各ブロックされたシークレットに対して、GitHub が提供するリンクを訪問：
 
 ```
-https://github.com/160294w/hello-world/security/secret-scanning/unblock-secret/<SECRET_ID>
+https://github.com/taroru5358/hello-world/security/secret-scanning/unblock-secret/<SECRET_ID>
 ```
 
 画面上で以下を選択：
