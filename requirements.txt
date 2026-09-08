@@ -5,7 +5,7 @@
 Flask==0.12.2
 
 # Requests with known security issues
-requests==2.6.0
+requests==2.34.2
 
 # Pillow with CVE vulnerabilities
 Pillow==6.0.0
