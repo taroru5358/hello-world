@@ -113,11 +113,55 @@ gh stack merge
 bottom から順にマージされる。
 main がマージキュー必須の場合は、直接マージではなくキュー投入になる。
 
+## 実演用リポジトリ（作成済み）
+
+2026-11-12 に Free の Organization を作成し、マージキューを実際に動かした。
+
+- Organization: `taroru-mq-lab-9f3k`
+- リポジトリ: https://github.com/taroru-mq-lab-9f3k/merge-queue-lab
+- ruleset: `main merge queue`
+- 必須チェック: `demo-ci`
+- 最小グループ数: 2、待ち時間: 5 分
+- デモ手順: リポジトリ内の `DEMO.md`
+- 自動実行: リポジトリ内の `scripts/run-demo.sh`
+
+実施結果:
+
+| 項目 | 結果 |
+| --- | --- |
+| PR #1〜#3 をキュー投入 | 3 本とも `merge_group` で CI 成功 |
+| マージ | 3 本が同じタイムスタンプで main にマージ |
+| グループ | `gh-readonly-queue/main/pr-1`、`pr-2`、`pr-3` を確認 |
+| 追加検証 | PR #4〜#5、自動実行の #6〜#8 も同様に成功 |
+
+`merge_group` の実行は次のコマンドで確認できる。
+
+```bash
+gh run list --repo taroru-mq-lab-9f3k/merge-queue-lab \
+  --json name,event,status,conclusion,headBranch \
+  --jq '.[] | select(.event == "merge_group") | "\(.conclusion) \(.headBranch)"'
+```
+
+キュー内の位置は GraphQL で確認できる。
+
+```bash
+gh api graphql -f query='
+query {
+  repository(owner: "taroru-mq-lab-9f3k", name: "merge-queue-lab") {
+    pullRequest(number: 6) {
+      number
+      state
+      mergeQueueEntry { position state }
+    }
+  }
+}'
+```
+
 ## パート 2: マージキューを有効にする
 
 ### 注意: 個人アカウントでは設定できない
 
-このリポジトリは `taroru5358` という個人アカウント所有（`owner.type == "User"`）のため、マージキューは有効化できない。
+このリポジトリ（hello-world）は `taroru5358` という個人アカウント所有（`owner.type == "User"`）のため、マージキューは有効化できない。
 2026-11-12 に ruleset API へ送信して、次の 422 を確認済み。
 
 ```
@@ -129,6 +173,8 @@ errors: ["Invalid rule 'merge_queue': "]
 public なら無料プランで使える。
 
 ### Organization を用意する
+
+すでに実演用 Organization がある場合は、この手順を読み飛ばして ruleset の適用に進む。
 
 1. https://github.com/organizations/plan を開く
 2. Free プランを選ぶ
