@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スタックPRとマージキュー — 初心者向けアニメーション</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #656d76;
+    --line: #d0d7de;
+    --blue: #0969da;
+    --blue-bg: #ddf4ff;
+    --green: #1a7f37;
+    --green-bg: #dafbe1;
+    --red: #cf222e;
+    --red-bg: #ffebe9;
+    --amber: #9a6700;
+    --amber-bg: #fff8c5;
+    --purple: #8250df;
+    --purple-bg: #fbefff;
+    --page: #f6f8fa;
+    --panel: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at 15% 0%, #eef6ff 0, transparent 34%),
+      radial-gradient(circle at 90% 100%, #f3edff 0, transparent 32%),
+      var(--page);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    min-height: 100vh;
+  }
+
+  .app {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 28px 20px 48px;
+  }
+
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(22px, 3vw, 34px);
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.red { background: var(--red); }
+  .dot.green { background: var(--green); }
+  .dot.blue { background: var(--blue); }
+
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(31, 35, 40, 0.09);
+    position: relative;
+  }
+
+  .progress {
+    height: 5px;
+    background: #eaeef2;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    width: 16.666%;
+    background: linear-gradient(90deg, var(--blue), #6cb6ff);
+    border-radius: 0 99px 99px 0;
+    transition: width 0.45s ease;
+  }
+
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .caption {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 22px;
+    border-top: 1px solid #eaeef2;
+    min-height: 82px;
+    background: #fff;
+  }
+
+  .caption-step {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--blue-bg);
+    border-radius: 999px;
+    padding: 6px 10px;
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+
+  .caption-text {
+    margin: 0;
+    font-size: clamp(14px, 1.6vw, 17px);
+    line-height: 1.65;
+    color: #30363d;
+  }
+
+  .caption-text strong { color: var(--ink); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid #eaeef2;
+    background: #fbfcfd;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font: inherit;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  button:hover { background: #f3f4f6; border-color: #afb8c1; }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  button.primary {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: #fff;
+    font-weight: 700;
+  }
+  button.primary:hover { background: #30363d; border-color: #30363d; }
+
+  .spacer { flex: 1; }
+
+  .steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .step-pill {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .step-pill[aria-current="true"] {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+  }
+
+  .open-link {
+    margin-left: 8px;
+    font-size: 13px;
+    color: var(--blue);
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 8px 4px;
+  }
+  .open-link:hover { text-decoration: underline; }
+
+  .footnote {
+    margin: 14px 4px 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .footnote strong { color: var(--red); }
+
+  /* ---------- SVG base ---------- */
+
+  .col-title {
+    font-size: 21px;
+    font-weight: 800;
+    fill: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .col-sub {
+    font-size: 13px;
+    fill: var(--muted);
+  }
+  .side-label {
+    font-size: 11px;
+    fill: #8c959f;
+    letter-spacing: 0.08em;
+  }
+  .card-bg {
+    fill: #fff;
+    stroke: var(--line);
+    stroke-width: 1.5;
+  }
+  .card-title {
+    font-size: 20px;
+    font-weight: 800;
+    fill: var(--ink);
+  }
+  .card-sub {
+    font-size: 13px;
+    fill: var(--muted);
+  }
+  .main-title { fill: var(--blue); }
+  .card-accent { rx: 3; }
+  .arrow {
+    fill: none;
+    stroke: #8c959f;
+    stroke-width: 2;
+    stroke-dasharray: 5 5;
+  }
+  .arrow-label {
+    font-size: 12px;
+    fill: #8c959f;
+  }
+  .badge-text {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .badge-pending rect { fill: #f6f8fa; stroke: #d0d7de; }
+  .badge-pending text { fill: var(--muted); }
+  .badge-fail rect { fill: var(--red-bg); stroke: #ff8182; }
+  .badge-fail text { fill: var(--red); }
+  .badge-pass rect { fill: var(--green-bg); stroke: #4ac26b; }
+  .badge-pass text { fill: var(--green); }
+
+  .ci-badge { transition: opacity 0.35s ease; }
+
+  /* ---------- visibility by scene ---------- */
+
+  #blocked-banner {
+    opacity: 0;
+    transform: translateX(10px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  svg[data-scene="1"] #blocked-banner { opacity: 1; transform: none; }
+
+  #queue-panel {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  svg[data-scene="2"] #queue-panel,
+  svg[data-scene="3"] #queue-panel,
+  svg[data-scene="4"] #queue-panel,
+  svg[data-scene="5"] #queue-panel { opacity: 1; transform: none; }
+
+  #auto-merge {
+    opacity: 0;
+    translate: 0 -6px;
+    transition: opacity 0.45s ease, translate 0.45s ease;
+  }
+  svg[data-scene="3"] #auto-merge,
+  svg[data-scene="4"] #auto-merge,
+  svg[data-scene="5"] #auto-merge { opacity: 1; translate: 0 0; }
+
+  #chip-a, #chip-b {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  svg[data-scene="2"] #chip-a,
+  svg[data-scene="3"] #chip-a,
+  svg[data-scene="4"] #chip-a,
+  svg[data-scene="5"] #chip-a,
+  svg[data-scene="2"] #chip-b,
+  svg[data-scene="3"] #chip-b,
+  svg[data-scene="4"] #chip-b,
+  svg[data-scene="5"] #chip-b { opacity: 1; transform: none; }
+
+  .merge-check {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  svg[data-scene="4"] .merge-check,
+  svg[data-scene="5"] .merge-check { opacity: 1; transform: none; }
+
+  #merged-badge, #commit-dots, #queue-done {
+    opacity: 0;
+    transition: opacity 0.45s ease;
+  }
+  svg[data-scene="5"] #merged-badge,
+  svg[data-scene="5"] #commit-dots,
+  svg[data-scene="5"] #queue-done { opacity: 1; }
+
+  #main-card {
+    transition: filter 0.45s ease;
+  }
+  svg[data-scene="5"] #main-card {
+    filter: drop-shadow(0 0 12px rgba(26, 127, 55, 0.25));
+  }
+
+  /* queue chip states */
+  .queue-chip .chip-bg {
+    fill: #fff;
+    stroke: var(--line);
+    stroke-width: 1.5;
+  }
+  .queue-chip .chip-accent { rx: 3; }
+  .queue-chip .chip-title { font-size: 18px; font-weight: 800; fill: var(--ink); }
+  .queue-chip .chip-sub { font-size: 12px; fill: var(--muted); }
+  .queue-chip .chip-status-text { font-size: 13px; font-weight: 700; }
+  .queue-chip.not-ready .chip-bg { stroke: #ff8182; fill: #fff8f8; }
+  .queue-chip.not-ready .chip-accent { fill: var(--red); }
+  .queue-chip.not-ready .chip-status-text { fill: var(--red); }
+  .queue-chip.blocked .chip-bg { stroke: #d4a72c; fill: #fffdf3; }
+  .queue-chip.blocked .chip-accent { fill: var(--amber); }
+  .queue-chip.blocked .chip-status-text { fill: var(--amber); }
+  .queue-chip.ready .chip-bg { stroke: #4ac26b; fill: #f6fff8; }
+  .queue-chip.ready .chip-accent { fill: var(--green); }
+  .queue-chip.ready .chip-status-text { fill: var(--green); }
+  .queue-chip.queued .chip-bg { stroke: var(--blue); fill: #f6fbff; }
+  .queue-chip.queued .chip-accent { fill: var(--blue); }
+  .queue-chip.queued .chip-status-text { fill: var(--blue); }
+  .queue-chip.merged .chip-bg { stroke: #4ac26b; fill: var(--green-bg); }
+  .queue-chip.merged .chip-accent { fill: var(--green); }
+  .queue-chip.merged .chip-status-text { fill: var(--green); }
+
+  .queue-status-bg {
+    fill: #f6f8fa;
+    stroke: var(--line);
+  }
+  .queue-status-text {
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--muted);
+  }
+  .queue-status-bg.warn { fill: var(--amber-bg); stroke: #d4a72c; }
+  .queue-status-text.warn { fill: var(--amber); }
+  .queue-status-bg.ready { fill: var(--green-bg); stroke: #4ac26b; }
+  .queue-status-text.ready { fill: var(--green); }
+  .queue-status-bg.go { fill: var(--blue-bg); stroke: #54aeff; }
+  .queue-status-text.go { fill: var(--blue); }
+
+  .toggle-track { fill: #d0d7de; transition: fill 0.35s ease; }
+  .toggle-knob { fill: #fff; transition: transform 0.35s ease; }
+  .toggle-label { font-size: 13px; font-weight: 700; fill: var(--muted); }
+  #auto-merge.on .toggle-track { fill: var(--green); }
+  #auto-merge.on .toggle-knob { transform: translateX(18px); }
+  #auto-merge.on .toggle-label { fill: var(--green); }
+
+  .merged-pill rect { fill: var(--green); }
+  .merged-pill text { fill: #fff; font-size: 12px; font-weight: 800; }
+
+  .pulse-ring {
+    fill: none;
+    stroke: #54aeff;
+    stroke-width: 2;
+    opacity: 0;
+  }
+  .queue-chip.queued .pulse-ring {
+    animation: ringPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes ringPulse {
+    0%, 100% { opacity: 0.0; }
+    50% { opacity: 0.85; }
+  }
+
+  .dot-commit { fill: var(--green); }
+
+  @media (max-width: 760px) {
+    header { align-items: flex-start; flex-direction: column; }
+    .legend { justify-content: flex-start; }
+    .caption { flex-direction: column; gap: 8px; }
+    .controls { gap: 8px; }
+    .spacer { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>スタックPRとマージキュー</h1>
+      <p class="subtitle">上のPRは、下のPRが赤いままマージできる？ アニメーションで順番に見てみよう。</p>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="dot green"></i>CI 成功</span>
+      <span><i class="dot red"></i>CI 失敗</span>
+      <span><i class="dot blue"></i>マージキュー</span>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+
+    <svg id="diagram" data-scene="0" viewBox="0 0 1200 680" role="img" aria-labelledby="svgTitle svgDesc">
+      <title id="svgTitle">スタックPRとマージキューの関係</title>
+      <desc id="svgDesc">下のPRがCI失敗の間は、上のPRのCIが成功していてもマージできません。両方のチェックが通ると、スタック全体がマージキューに入り、下から順にまとめてマージされます。</desc>
+
+      <defs>
+        <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset="1" stop-color="#fbfcfe"/>
+        </linearGradient>
+        <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+          <circle cx="1.5" cy="1.5" r="1.2" fill="#e8edf3"/>
+        </pattern>
+        <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="150%">
+          <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#1f2328" flood-opacity="0.08"/>
+        </filter>
+        <marker id="arrowHead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#8c959f"/>
+        </marker>
+      </defs>
+
+      <rect x="0" y="0" width="1200" height="680" fill="url(#bgGrad)" rx="24"/>
+      <rect x="0" y="0" width="1200" height="680" fill="url(#dots)" rx="24"/>
+
+      <!-- ============ LEFT: STACK ============ -->
+      <text class="col-title" x="70" y="64">スタック</text>
+      <text class="col-sub" x="70" y="88">下の変更の上に、上の変更を積む</text>
+
+      <!-- vertical bracket -->
+      <path d="M 52 268 L 52 596" stroke="#c7d0d9" stroke-width="1.5" stroke-dasharray="3 5" fill="none"/>
+      <path d="M 46 268 L 58 268 M 46 596 L 58 596" stroke="#c7d0d9" stroke-width="1.5" fill="none"/>
+      <text class="side-label" x="40" y="300" transform="rotate(-90 40 300)" text-anchor="middle">TOP</text>
+      <text class="side-label" x="40" y="570" transform="rotate(-90 40 570)" text-anchor="middle">BOTTOM</text>
+
+      <!-- arrows -->
+      <path class="arrow" d="M 335 474 C 335 495 305 495 305 516" marker-end="url(#arrowHead)"/>
+      <text class="arrow-label" x="348" y="500">base: main</text>
+      <path class="arrow" d="M 365 344 C 365 365 335 365 335 386" marker-end="url(#arrowHead)"/>
+      <text class="arrow-label" x="378" y="370">base: PR A</text>
+
+      <!-- main card -->
+      <g id="main-card">
+        <rect class="card-bg" x="80" y="520" width="450" height="80" rx="16" filter="url(#cardShadow)"/>
+        <rect class="card-accent" x="80" y="532" width="6" height="56" fill="#0969da"/>
+        <text class="card-title main-title" x="106" y="552">main</text>
+        <text class="card-sub" x="106" y="576">ベースブランチ</text>
+        <g id="commit-dots">
+          <circle class="dot-commit" cx="430" cy="550" r="5"/>
+          <circle class="dot-commit" cx="448" cy="550" r="5"/>
+          <text x="430" y="578" font-size="11" fill="#1a7f37" font-weight="700">2 commits merged</text>
+        </g>
+        <g id="merged-badge" transform="translate(400, 538)">
+          <g class="merged-pill">
+            <rect x="0" y="0" width="112" height="28" rx="14" fill="#1a7f37"/>
+            <text x="56" y="19" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">✓ Merged</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- PR A (lower) -->
+      <g id="card-a" filter="url(#cardShadow)">
+        <rect class="card-bg" x="110" y="390" width="450" height="80" rx="16"/>
+        <rect class="card-accent" x="110" y="402" width="6" height="56" fill="#8250df"/>
+        <text class="card-title" x="136" y="422">PR A</text>
+        <text class="card-sub" x="136" y="446">下の変更 / demo/stack-lower</text>
+        <g id="ci-a" class="ci-badge badge-pending" transform="translate(318, 406)">
+          <rect x="0" y="0" width="126" height="32" rx="16"/>
+          <text id="ci-a-text" x="63" y="21" text-anchor="middle" class="badge-text">CI 待ち</text>
+        </g>
+      </g>
+
+      <!-- PR B (upper) -->
+      <g id="card-b" filter="url(#cardShadow)">
+        <rect class="card-bg" x="140" y="260" width="450" height="80" rx="16"/>
+        <rect class="card-accent" x="140" y="272" width="6" height="56" fill="#bf3989"/>
+        <text class="card-title" x="166" y="292">PR B</text>
+        <text class="card-sub" x="166" y="316">上の変更 / demo/stack-upper</text>
+        <g id="ci-b" class="ci-badge badge-pending" transform="translate(348, 276)">
+          <rect x="0" y="0" width="126" height="32" rx="16"/>
+          <text id="ci-b-text" x="63" y="21" text-anchor="middle" class="badge-text">CI 待ち</text>
+        </g>
+      </g>
+
+      <!-- blocked banner -->
+      <g id="blocked-banner">
+        <path d="M 620 300 L 604 300 L 592 286 L 592 314 L 604 300" fill="#ffebe9" stroke="#ff8182" stroke-width="1.5"/>
+        <rect x="620" y="248" width="290" height="104" rx="18" fill="#fff8f8" stroke="#ff8182" stroke-width="1.5" filter="url(#cardShadow)"/>
+        <circle cx="650" cy="280" r="15" fill="#cf222e"/>
+        <path d="M 650 273 v 9 M 650 287 v 2" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <text x="678" y="278" font-size="16" font-weight="800" fill="#cf222e">Blocked downstack</text>
+        <text x="678" y="300" font-size="12" fill="#a40e26">上のCIが成功でも、下が未通過なら</text>
+        <text x="678" y="320" font-size="12" fill="#a40e26">上のPRはマージできない</text>
+      </g>
+
+      <!-- ============ RIGHT: QUEUE ============ -->
+      <g id="queue-panel">
+        <rect x="630" y="112" width="500" height="504" rx="24" fill="#f8fafc" stroke="#d0d7de" stroke-width="1.5"/>
+        <text x="662" y="152" font-size="20" font-weight="800" fill="#1f2328">Merge queue</text>
+        <text x="662" y="174" font-size="12" fill="#656d76">下から順に、まとめて検証する</text>
+
+        <!-- slot 1 -->
+        <rect x="660" y="196" width="440" height="112" rx="16" fill="#fff" stroke="#d0d7de" stroke-width="1.5" stroke-dasharray="7 6"/>
+        <text x="680" y="188" font-size="11" font-weight="700" fill="#8c959f">POSITION 1</text>
+
+        <!-- slot 2 -->
+        <rect x="660" y="320" width="440" height="112" rx="16" fill="#fff" stroke="#d0d7de" stroke-width="1.5" stroke-dasharray="7 6"/>
+        <text x="680" y="312" font-size="11" font-weight="700" fill="#8c959f">POSITION 2</text>
+
+        <!-- main landing -->
+        <rect x="660" y="470" width="440" height="82" rx="16" fill="#f0f7ff" stroke="#54aeff" stroke-width="1.5"/>
+        <text x="680" y="502" font-size="17" font-weight="800" fill="#0969da">main</text>
+        <text x="680" y="524" font-size="12" fill="#57606a">検証が通ったら、ここに合流</text>
+        <g id="queue-done">
+          <circle cx="1040" cy="510" r="14" fill="#1a7f37"/>
+          <path d="M 1033 510 l 5 5 l 9 -11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+
+        <!-- down arrow -->
+        <path d="M 880 438 L 880 466" stroke="#8c959f" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#arrowHead)"/>
+
+        <!-- chip A -->
+        <g id="chip-a" class="queue-chip not-ready">
+          <rect class="pulse-ring" x="652" y="188" width="456" height="128" rx="20"/>
+          <rect class="chip-bg" x="680" y="212" width="400" height="62" rx="14"/>
+          <rect class="chip-accent" x="680" y="224" width="5" height="38" fill="#cf222e"/>
+          <text class="chip-title" x="702" y="237">PR A</text>
+          <text class="chip-sub" x="702" y="256">1番目（下）</text>
+          <g class="chip-status" transform="translate(950, 232)">
+            <circle cx="6" cy="8" r="5" fill="#cf222e"/>
+            <text class="chip-status-text" x="18" y="13">Not ready</text>
+          </g>
+        </g>
+
+        <!-- chip B -->
+        <g id="chip-b" class="queue-chip blocked">
+          <rect class="pulse-ring" x="652" y="312" width="456" height="128" rx="20"/>
+          <rect class="chip-bg" x="680" y="336" width="400" height="62" rx="14"/>
+          <rect class="chip-accent" x="680" y="348" width="5" height="38" fill="#9a6700"/>
+          <text class="chip-title" x="702" y="361">PR B</text>
+          <text class="chip-sub" x="702" y="380">2番目（上）</text>
+          <g class="chip-status" transform="translate(930, 356)">
+            <circle cx="6" cy="8" r="5" fill="#9a6700"/>
+            <text class="chip-status-text" x="18" y="13">Blocked downstack</text>
+          </g>
+        </g>
+
+        <!-- merge checks -->
+        <g id="check-a" class="merge-check">
+          <rect x="680" y="282" width="400" height="22" rx="11" fill="#dafbe1" stroke="#4ac26b"/>
+          <text x="694" y="298" font-size="11" font-weight="700" fill="#1a7f37">✓ main + PR A の状態で CI</text>
+        </g>
+        <g id="check-b" class="merge-check">
+          <rect x="680" y="406" width="400" height="22" rx="11" fill="#dafbe1" stroke="#4ac26b"/>
+          <text x="694" y="422" font-size="11" font-weight="700" fill="#1a7f37">✓ main + PR A + PR B の状態で CI</text>
+        </g>
+
+        <!-- queue status -->
+        <g id="queue-status" transform="translate(660, 578)">
+          <rect id="queue-status-bg" class="queue-status-bg warn" x="0" y="0" width="440" height="26" rx="13"/>
+          <text id="queue-status-text" class="queue-status-text warn" x="220" y="18" text-anchor="middle">PR A が Not ready の間は先に進めない</text>
+        </g>
+      </g>
+
+      <!-- auto-merge toggle -->
+      <g transform="translate(860, 54)">
+        <g id="auto-merge">
+          <rect x="0" y="0" width="268" height="46" rx="23" fill="#fff" stroke="#d0d7de" stroke-width="1.5" filter="url(#cardShadow)"/>
+          <text x="18" y="29" font-size="13" font-weight="700" fill="#656d76">stacked auto-merge</text>
+          <rect class="toggle-track" x="202" y="11" width="46" height="24" rx="12"/>
+          <circle class="toggle-knob" cx="214" cy="23" r="9"/>
+          <text id="toggle-state" class="toggle-label" x="232" y="40" text-anchor="middle">OFF</text>
+        </g>
+      </g>
+    </svg>
+
+    <div class="caption">
+      <span class="caption-step" id="captionStep">STEP 1 / 6</span>
+      <p class="caption-text" id="captionText" aria-live="polite"></p>
+    </div>
+
+    <div class="controls">
+      <button type="button" id="prevBtn" aria-label="前のシーンへ">← 前へ</button>
+      <button type="button" id="playBtn" class="primary" aria-label="アニメーションを一時停止">⏸ 一時停止</button>
+      <button type="button" id="nextBtn" aria-label="次のシーンへ">次へ →</button>
+      <button type="button" id="replayBtn" aria-label="最初から再生">↺ 最初から</button>
+      <div class="spacer"></div>
+      <div class="steps" role="group" aria-label="シーン選択">
+        <button type="button" class="step-pill" data-step="0" aria-label="シーン1">1</button>
+        <button type="button" class="step-pill" data-step="1" aria-label="シーン2">2</button>
+        <button type="button" class="step-pill" data-step="2" aria-label="シーン3">3</button>
+        <button type="button" class="step-pill" data-step="3" aria-label="シーン4">4</button>
+        <button type="button" class="step-pill" data-step="4" aria-label="シーン5">5</button>
+        <button type="button" class="step-pill" data-step="5" aria-label="シーン6">6</button>
+      </div>
+      <a class="open-link" href="merge-queue-stack-explainer.html" target="_blank" rel="noopener">別タブで開く ↗</a>
+    </div>
+  </div>
+
+  <p class="footnote">
+    <strong>大事なポイント:</strong> 下のPRが失敗したまま上のPRだけをマージすることはできません。下が失敗すると、上もキューから外れます。
+  </p>
+</div>
+
+<script>
+(() => {
+  const svg = document.getElementById('diagram');
+  const captionText = document.getElementById('captionText');
+  const captionStep = document.getElementById('captionStep');
+  const progressBar = document.getElementById('progressBar');
+  const playBtn = document.getElementById('playBtn');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const replayBtn = document.getElementById('replayBtn');
+  const pills = Array.from(document.querySelectorAll('.step-pill'));
+
+  const ciA = document.getElementById('ci-a');
+  const ciAText = document.getElementById('ci-a-text');
+  const ciB = document.getElementById('ci-b');
+  const ciBText = document.getElementById('ci-b-text');
+
+  const chipA = document.getElementById('chip-a');
+  const chipB = document.getElementById('chip-b');
+  const chipAStatus = chipA.querySelector('.chip-status-text');
+  const chipBStatus = chipB.querySelector('.chip-status-text');
+  const chipADot = chipA.querySelector('.chip-status circle');
+  const chipBDot = chipB.querySelector('.chip-status circle');
+
+  const queueStatusBg = document.getElementById('queue-status-bg');
+  const queueStatusText = document.getElementById('queue-status-text');
+  const autoMerge = document.getElementById('auto-merge');
+  const toggleState = document.getElementById('toggle-state');
+
+  const scenes = [
+    {
+      caption: '<strong>スタックPR</strong>は、下の変更の上に上の変更を積み上げたもの。PR B の base は PR A です。',
+      chips: ['not-ready', 'blocked'],
+      queue: 'まだキューには入れない',
+      queueClass: 'warn',
+      auto: false
+    },
+    {
+      caption: '<strong>下の PR A が CI 失敗。</strong>上の PR B は CI 成功でも、スタック全体では <strong>Blocked downstack</strong>。上のPRだけ先にマージすることはできません。',
+      chips: ['not-ready', 'blocked'],
+      queue: 'PR A が Not ready の間は先に進めない',
+      queueClass: 'warn',
+      auto: false
+    },
+    {
+      caption: 'マージキューは<strong>スタックを1つの単位</strong>として扱います。PR A が1番目、PR B が2番目。順番を飛ばすことはできません。',
+      chips: ['not-ready', 'blocked'],
+      queue: '投入不可。上だけを割り込ませることはできない',
+      queueClass: 'warn',
+      auto: false
+    },
+    {
+      caption: '<strong>下の PR A を修正して、両方の CI が成功。</strong>ここで初めてスタック全体がマージ可能になります。',
+      chips: ['ready', 'ready'],
+      queue: '全チェック通過。マージ可能になった',
+      queueClass: 'ready',
+      auto: false
+    },
+    {
+      caption: 'stacked auto-merge を有効にすると、<strong>全部そろった時点で自動的にキューへ</strong>。merge_group で「main + A」「main + A + B」を検証します。',
+      chips: ['queued', 'queued'],
+      queue: '自動でキューに投入。merge_group で検証中',
+      queueClass: 'go',
+      auto: true
+    },
+    {
+      caption: '<strong>キューが下から順にマージ。</strong>PR A と PR B がまとめて main に入ります。下が失敗したら、上もキューから外れます。',
+      chips: ['merged', 'merged'],
+      queue: 'まとめてマージ完了',
+      queueClass: 'ready',
+      auto: true
+    }
+  ];
+
+  const durations = [4200, 5200, 4800, 4400, 5600, 6200];
+
+  let scene = 0;
+  let playing = true;
+  let timer = null;
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setBadge(el, textEl, state, text) {
+    el.classList.remove('badge-pending', 'badge-fail', 'badge-pass');
+    el.classList.add(`badge-${state}`);
+    textEl.textContent = text;
+  }
+
+  function setChip(chip, statusText, dot, state, text) {
+    chip.classList.remove('not-ready', 'blocked', 'ready', 'queued', 'merged');
+    chip.classList.add(state);
+    statusText.textContent = text;
+    const colors = {
+      'not-ready': '#cf222e',
+      blocked: '#9a6700',
+      ready: '#1a7f37',
+      queued: '#0969da',
+      merged: '#1a7f37'
+    };
+    dot.setAttribute('fill', colors[state]);
+  }
+
+  function setScene(next) {
+    scene = Math.max(0, Math.min(scenes.length - 1, next));
+    const s = scenes[scene];
+
+    svg.dataset.scene = String(scene);
+    captionStep.textContent = `STEP ${scene + 1} / ${scenes.length}`;
+    captionText.innerHTML = s.caption;
+    progressBar.style.width = `${((scene + 1) / scenes.length) * 100}%`;
+
+    // CI badges
+    if (scene === 0) {
+      setBadge(ciA, ciAText, 'pending', 'CI 待ち');
+      setBadge(ciB, ciBText, 'pending', 'CI 待ち');
+    } else if (scene <= 2) {
+      setBadge(ciA, ciAText, 'fail', 'CI 失敗');
+      setBadge(ciB, ciBText, 'pass', 'CI 成功');
+    } else {
+      setBadge(ciA, ciAText, 'pass', 'CI 成功');
+      setBadge(ciB, ciBText, 'pass', 'CI 成功');
+    }
+
+    // Queue chips
+    const [aState, bState] = s.chips;
+    const texts = {
+      'not-ready': 'Not ready',
+      blocked: 'Blocked downstack',
+      ready: 'Ready',
+      queued: 'Queued',
+      merged: '✓ Merged'
+    };
+    setChip(chipA, chipAStatus, chipADot, aState, texts[aState]);
+    setChip(chipB, chipBStatus, chipBDot, bState, texts[bState]);
+
+    // Queue status
+    queueStatusText.textContent = s.queue;
+    queueStatusBg.classList.remove('warn', 'ready', 'go');
+    queueStatusText.classList.remove('warn', 'ready', 'go');
+    queueStatusBg.classList.add(s.queueClass);
+    queueStatusText.classList.add(s.queueClass);
+
+    // Auto-merge toggle
+    autoMerge.classList.toggle('on', s.auto);
+    toggleState.textContent = s.auto ? 'ON' : 'OFF';
+
+    // Pills
+    pills.forEach((p, i) => {
+      p.setAttribute('aria-current', i === scene ? 'true' : 'false');
+    });
+
+    // Main merged badge is CSS-driven by data-scene
+  }
+
+  function clearTimer() {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function schedule() {
+    clearTimer();
+    if (!playing) return;
+    timer = setTimeout(() => {
+      if (scene >= scenes.length - 1) {
+        setScene(0);
+      } else {
+        setScene(scene + 1);
+      }
+      schedule();
+    }, durations[scene]);
+  }
+
+  function setPlaying(next) {
+    playing = next;
+    playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生';
+    playBtn.setAttribute('aria-label', playing ? 'アニメーションを一時停止' : 'アニメーションを再生');
+    if (playing) schedule();
+    else clearTimer();
+  }
+
+  function goTo(next, { pause = true } = {}) {
+    if (pause) setPlaying(false);
+    setScene(next);
+  }
+
+  playBtn.addEventListener('click', () => setPlaying(!playing));
+  prevBtn.addEventListener('click', () => goTo(scene - 1));
+  nextBtn.addEventListener('click', () => goTo(scene + 1));
+  replayBtn.addEventListener('click', () => {
+    setScene(0);
+    setPlaying(true);
+  });
+  pills.forEach((p) => {
+    p.addEventListener('click', () => goTo(Number(p.dataset.step)));
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      goTo(scene + 1);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      goTo(scene - 1);
+    } else if (e.code === 'Space') {
+      e.preventDefault();
+      setPlaying(!playing);
+    }
+  });
+
+  setScene(0);
+  if (reduceMotion) {
+    setPlaying(false);
+  } else {
+    setPlaying(true);
+  }
+})();
+</script>
+</body>
+</html>
