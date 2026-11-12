@@ -12,7 +12,7 @@
 | マージキュー入門 | 追加済み | `docs/github/merge-queue.md` |
 | スタック PR 入門 | 追加済み | `docs/github/stacked-prs.md` |
 | マージキュー ruleset | **未設定（設定不可）** | 個人アカウント所有のため |
-| スタック PR | 作成済み | この PR を含む 3 層 |
+| スタック PR | 作成済み | PR #32〜#34 の 3 層（Stack #35） |
 
 ## 前提
 
@@ -218,6 +218,12 @@ PR ページの `Remove from queue` を押す。
 
 2 つ目は「main + 1 つ目 + 2 つ目」の状態で CI が走る。
 1 つ目が失敗すると、2 つ目だけのグループで再実行される。
+
+## このリポジトリの既知の失敗
+
+`CodeQL Analysis` は、リポジトリ側で default setup が有効なのに advanced configuration のワークフローも存在するため失敗する。
+マージキューとスタック PR の検証には影響しない。
+必須チェックには `demo-ci` だけを指定している。
 
 ## トラブルシューティング
 
