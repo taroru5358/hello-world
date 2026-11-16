@@ -1,21 +1,23 @@
 name: Cache Benchmark
 
 # GitHub Actions のキャッシュをフル活用した場合／しない場合で、
-# Web アプリのテスト（lint・型チェック・unit・build・E2E）の実行時間を比較する。
-# 結果は HTML レポートとして Actions Artifact に保存する。
+# Web アプリの CI（依存インストール・lint・型チェック・unit・build・E2E・Docker ビルド・Trivy スキャン）の
+# 実行時間を比較する。結果は HTML レポートとして Actions Artifact に保存する。
 #
+# app:
+#   small  依存約 180 個の小さなアプリ
+#   large  依存約 480 個（MUI など）＋生成した 300 機能のアプリ
 # variant:
 #   none        キャッシュなし（setup-node の自動キャッシュも明示的に無効化）
 #   setup-node  定番の最小構成（setup-node の cache: npm で ~/.npm だけ）
-#   full        ~/.npm・node_modules・Playwright ブラウザ・ESLint/tsc/Vitest のキャッシュ
+#   full        node_modules・~/.npm・Playwright ブラウザ・BuildKit（gha）・Trivy DB をキャッシュ
 #
-# 公平性のため full のキャッシュキーには run_id を含め、run ごとに作り直す。
-# prime job が cold 状態で 1 回走ってキャッシュを作り、その後 measure job が warm 状態で計測する。
+# reset → prime（cold・キャッシュ作成）→ measure（warm）→ report → cleanup の順に実行する。
 on:
   workflow_dispatch:
     inputs:
       iterations:
-        description: "各 variant の warm 計測回数"
+        description: "各 app × variant の warm 計測回数"
         type: choice
         options: ["1", "3", "5"]
         default: "3"
@@ -28,34 +30,56 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NODE_VERSION: "24"
-  APP_DIR: bench/web-app
   CACHE_PREFIX: bench-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
+  # run をまたいで共有されるキー（trivy-action・setup-trivy・BuildKit の blob）を消して cold から始める
+  reset:
+    name: reset shared caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete shared caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh cache list --repo "$REPO" --limit 1000 --json id,key \
+            --jq '.[] | select(.key | test("^(cache-trivy-|trivy-binary-|buildkit-|index-)")) | "\(.id)"' > ids.txt
+          while read -r id; do gh cache delete "$id" --repo "$REPO"; done < ids.txt
+          echo "deleted $(wc -l < ids.txt) shared caches"
+
   prime:
-    name: prime / ${{ matrix.variant }}
+    name: prime / ${{ matrix.app }} / ${{ matrix.variant }}
+    needs: reset
     strategy:
       fail-fast: false
       matrix:
+        app: [small, large]
         variant: [setup-node, full]
     uses: ./.github/workflows/cache-benchmark-run.yml
     with:
+      app: ${{ matrix.app }}
       variant: ${{ matrix.variant }}
       phase: cold
       iteration: 0
       cache-prefix: bench-${{ github.run_id }}-${{ github.run_attempt }}
 
   measure:
-    name: measure / ${{ matrix.variant }} / ${{ matrix.iteration }}
+    name: measure / ${{ matrix.app }} / ${{ matrix.variant }} / ${{ matrix.iteration }}
     needs: prime
     strategy:
       fail-fast: false
       matrix:
+        app: [small, large]
         variant: [none, setup-node, full]
         iteration: ${{ fromJSON(inputs.iterations == '5' && '[1,2,3,4,5]' || inputs.iterations == '1' && '[1]' || '[1,2,3]') }}
     uses: ./.github/workflows/cache-benchmark-run.yml
     with:
+      app: ${{ matrix.app }}
       variant: ${{ matrix.variant }}
       phase: warm
       iteration: ${{ matrix.iteration }}
@@ -142,8 +166,11 @@ jobs:
           PREFIX: ${{ env.CACHE_PREFIX }}-
         run: |
           set -euo pipefail
-          ids=$(gh cache list --repo "$REPO" --key "$PREFIX" --limit 100 --json id --jq '.[].id')
-          for id in $ids; do
-            gh cache delete "$id" --repo "$REPO"
-          done
-          echo "deleted: $(echo "$ids" | grep -c . || true) caches with prefix ${PREFIX}"
+          # 一覧を残しておくと、BuildKit などのキー形式を後から確認できる
+          gh cache list --repo "$REPO" --limit 1000 --json key,sizeInBytes \
+            --jq '.[] | "\(.sizeInBytes)\t\(.key)"' | cut -c1-120 | sort -k2 | head -50
+          # shellcheck disable=SC2016 # $ENV は jq の式
+          gh cache list --repo "$REPO" --limit 1000 --json id,key \
+            --jq '.[] | select((.key | startswith($ENV.PREFIX)) or (.key | test("^(cache-trivy-|trivy-binary-|buildkit-|index-)"))) | "\(.id)"' > ids.txt
+          while read -r id; do gh cache delete "$id" --repo "$REPO"; done < ids.txt
+          echo "deleted $(wc -l < ids.txt) caches"
