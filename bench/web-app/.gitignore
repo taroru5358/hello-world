@@ -3,3 +3,5 @@ dist/
 playwright-report/
 test-results/
 .eslintcache
+# グローバル gitignore で除外されていても lockfile は計測の前提なので追跡する
+!package-lock.json
