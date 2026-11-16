@@ -72,13 +72,14 @@ Web アプリのテスト（lint / 型チェック / unit test / build / E2E）�
 - 2026-11-16: 公開先はユーザー回答により「Actions Artifact のみ」（Pages は使わない）。HTML は `archive: false` で単体保存
 - 2026-11-16: 初回実行が失敗（lockfile 未コミット、macOS 生成 lockfile の Linux 非互換）→ #37 / #38 で修正
 - 2026-11-16: レポートに「この計測からわかること」を追加、cache-hit の空文字を true/false に正規化（#39）
+- 2026-11-16: 結論文に「各回の範囲が重なる＝ばらつきと同程度」の注記を追加し再計測（#40）
 
 ## 結果（完了）
 
 - 最終 run: https://github.com/taroru5358/hello-world/actions/runs/43879399826 （iterations=5、19 job すべて成功）
 - レポート: `cache-benchmark-report.html`（artifact 14230739482、2027-02-14 まで保持）。About の Homepage に設定
-- warm 中央値: キャッシュなし 1分03秒 ／ setup-node の cache: npm だけ 42秒 ／ フル活用 42秒前後
-  * フル活用と setup-node の差はばらつきの範囲内。依存が少ないアプリでは node_modules キャッシュの効果は小さい
+- warm 中央値: キャッシュなし 1分03秒 ／ setup-node の cache: npm だけ 42秒 ／ フル活用 52秒
+  * フル活用は setup-node より遅かったが、各回の範囲は重なりばらつきの範囲内。依存が少ないアプリでは node_modules キャッシュの効果は小さい
   * ブラウザ本体をキャッシュしても apt の OS 依存インストールが残り、ブラウザ準備は 20 秒台
 - 完了条件: workflow 成功 / HTML artifact 生成 / ブラウザ表示確認（Chrome MCP は他セッションがプロファイル使用中のため Playwright で代替）/ About 設定 / 個人ID・クレデンシャル 0 件 — すべて満たした
 

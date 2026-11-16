@@ -231,6 +231,11 @@ def takeaways(agg: dict) -> list[str]:
         d = none["total"] - warm[best]["total"]
         out.append(
             f"いちばん速かったのは「{VARIANT_LABEL[best]}」で、キャッシュなしより {fmt(d)}（{d / none['total'] * 100:.0f}%）短くなった。"
+            + (
+                "ただし各回の最小〜最大の範囲は重なっており、ランナーのばらつき（job 起動や apt の速度）と同程度の差でもある。"
+                if not (warm[best]["max"] < none["min"])
+                else "各回の範囲も重なっておらず、明確な差といえる。"
+            )
         )
     sn, full = warm.get("setup-node"), warm.get("full")
     if sn and full:
