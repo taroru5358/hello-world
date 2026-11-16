@@ -127,14 +127,16 @@ jobs:
         run: npm run e2e
 
       # --- report 用のメタ情報（キャッシュの hit/miss） ---
+      # actions/cache は miss 時に cache-hit を空文字で返すことがあるため、
+      # 実行された step なら true/false、実行されなかった step は空にそろえる
       - name: Write metadata
         env:
           PHASE: ${{ inputs.phase }}
           ITERATION: ${{ inputs.iteration }}
-          HIT_NM: ${{ steps.nm.outputs.cache-hit }}
-          HIT_NPM: ${{ steps.npm.outputs.cache-hit }}
-          HIT_BROWSERS: ${{ steps.browsers.outputs.cache-hit }}
-          HIT_SETUP_NODE: ${{ steps.setup-node.outputs.cache-hit }}
+          HIT_NM: ${{ steps.nm.outcome == 'success' && (steps.nm.outputs.cache-hit == 'true' && 'true' || 'false') || '' }}
+          HIT_NPM: ${{ steps.npm.outcome == 'success' && (steps.npm.outputs.cache-hit == 'true' && 'true' || 'false') || '' }}
+          HIT_BROWSERS: ${{ steps.browsers.outcome == 'success' && (steps.browsers.outputs.cache-hit == 'true' && 'true' || 'false') || '' }}
+          HIT_SETUP_NODE: ${{ steps.setup-node.outcome == 'success' && (steps.setup-node.outputs.cache-hit == 'true' && 'true' || 'false') || '' }}
           PW_VERSION: ${{ steps.pw.outputs.version }}
         run: |
           set -euo pipefail

@@ -219,6 +219,67 @@ def hit_badge(v: str) -> str:
     return '<span class="badge na">—</span>'
 
 
+def takeaways(agg: dict) -> list[str]:
+    """計測値から読み取れることを文章にする（値から機械的に組み立てる）。"""
+    out: list[str] = []
+    warm = {v: agg[(v, "warm")] for v in VARIANTS if (v, "warm") in agg}
+    if not warm:
+        return out
+    best = min(warm, key=lambda v: warm[v]["total"])
+    none = warm.get("none")
+    if none and best != "none":
+        d = none["total"] - warm[best]["total"]
+        out.append(
+            f"いちばん速かったのは「{VARIANT_LABEL[best]}」で、キャッシュなしより {fmt(d)}（{d / none['total'] * 100:.0f}%）短くなった。"
+        )
+    sn, full = warm.get("setup-node"), warm.get("full")
+    if sn and full:
+        overlap = not (full["max"] < sn["min"] or sn["max"] < full["min"])
+        d = sn["total"] - full["total"]
+        if overlap:
+            out.append(
+                f"「フル活用」と「setup-node の cache: npm だけ」の差は {fmt(abs(d))} で、"
+                "各回の最小〜最大の範囲が重なっている。この規模のアプリでは、ランナーのばらつきの範囲内の差と見るのが妥当。"
+            )
+        else:
+            word = "速い" if d > 0 else "遅い"
+            out.append(
+                f"「フル活用」は「setup-node の cache: npm だけ」より {fmt(abs(d))} {word}（範囲の重なりなし）。"
+            )
+    if none and full:
+        gains = sorted(
+            (
+                (none["phases"][k] - full["phases"][k], k)
+                for k, _, _ in PHASES
+                if k not in ("restore", "save", "prepare", "other")
+            ),
+            reverse=True,
+        )
+        top = [f"{PHASE_LABEL[k]}（-{fmt(g)}）" for g, k in gains if g >= 1][:3]
+        if top:
+            out.append("フル活用で短くなった工程: " + "、".join(top) + "。")
+        cost = full["phases"]["restore"] + full["phases"]["save"]
+        if cost >= 1:
+            out.append(
+                f"その代わり、キャッシュの復元・保存に {fmt(cost)} かかっている。節約分の一部はここで相殺される。"
+            )
+        b_none, b_full = none["phases"]["browsers"], full["phases"]["browsers"]
+        out.append(
+            f"ブラウザ準備はキャッシュなし {fmt(b_none)} に対し、ブラウザ本体をキャッシュしても {fmt(b_full)} かかった。"
+            "残りは apt による OS 依存パッケージのインストールで、これはキャッシュできない（Playwright 公式の説明どおり）。"
+        )
+    cold = agg.get(("full", "cold"))
+    if cold and full:
+        out.append(
+            f"キャッシュがまだ無い初回のフル活用は {fmt(cold['total'])}。lockfile や Playwright のバージョンを変えた直後はこの時間になる。"
+        )
+    out.append(
+        "計測対象は依存パッケージ約 180 個の小さなアプリ。依存が多い実プロジェクトほど「依存インストール」の差が大きくなり、"
+        "node_modules キャッシュの効果も大きくなると推定される（未計測）。"
+    )
+    return out
+
+
 def render(rows: list[dict], agg: dict, ctx: dict) -> str:
     none_w = agg.get(("none", "warm"), {}).get("total")
     cards = []
@@ -229,7 +290,8 @@ def render(rows: list[dict], agg: dict, ctx: dict) -> str:
         diff = ""
         if none_w and v != "none":
             pct = (none_w - a["total"]) / none_w * 100
-            diff = f'<p class="delta">キャッシュなしより <strong>{fmt(none_w - a["total"])}</strong> 短い（{pct:.0f}% 削減）</p>'
+            word = "短い" if pct >= 0 else "長い"
+            diff = f'<p class="delta">キャッシュなしより <strong>{fmt(abs(none_w - a["total"]))}</strong> {word}（{abs(pct):.0f}% {"削減" if pct >= 0 else "増加"}）</p>'
         cards.append(
             f'<div class="card v-{v}"><h3>{html.escape(VARIANT_LABEL[v])}</h3>'
             f'<p class="big">{fmt(a["total"])}</p>'
@@ -321,6 +383,11 @@ code {{ font-size: .9em; }}
 <section aria-labelledby="h-result">
 <h2 id="h-result">結果（キャッシュが温まった状態の job 全体時間）</h2>
 <div class="cards">{"".join(cards)}</div>
+</section>
+
+<section aria-labelledby="h-take">
+<h2 id="h-take">この計測からわかること</h2>
+<ul>{"".join(f"<li>{html.escape(t)}</li>" for t in takeaways(agg))}</ul>
 </section>
 
 <section aria-labelledby="h-chart">
