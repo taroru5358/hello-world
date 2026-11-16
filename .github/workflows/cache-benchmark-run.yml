@@ -1,0 +1,163 @@
+name: Cache Benchmark (run)
+
+# cache-benchmark.yml から呼ばれる 1 回分の計測。単体では起動しない。
+# step 名は report が工程ごとに集計するキーなので、変えるときは make_report.py も直す。
+on:
+  workflow_call:
+    inputs:
+      variant:
+        description: "none | setup-node | full"
+        type: string
+        required: true
+      phase:
+        description: "cold | warm"
+        type: string
+        required: true
+      iteration:
+        type: number
+        required: true
+      cache-prefix:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: ${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: bench/web-app
+    env:
+      VARIANT: ${{ inputs.variant }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # --- Node のセットアップ（variant ごとにキャッシュ設定だけ変える） ---
+      - name: Setup Node
+        if: ${{ inputs.variant != 'setup-node' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          # package.json に packageManager があると v5 以降は自動でキャッシュされるため明示的に切る
+          package-manager-cache: false
+
+      - name: Setup Node (cache npm)
+        id: setup-node
+        if: ${{ inputs.variant == 'setup-node' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: bench/web-app/package-lock.json
+
+      # --- full のみ: actions/cache で各種キャッシュを復元 ---
+      - name: Restore cache node_modules
+        id: nm
+        if: ${{ inputs.variant == 'full' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # node_modules/.cache（ESLint・tsc）と node_modules/.vite（Vitest）も同梱される
+          path: bench/web-app/node_modules
+          key: ${{ inputs.cache-prefix }}-nm-${{ runner.os }}-node24-${{ hashFiles('bench/web-app/package-lock.json') }}
+
+      - name: Restore cache npm
+        id: npm
+        if: ${{ inputs.variant == 'full' && steps.nm.outputs.cache-hit != 'true' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: ${{ inputs.cache-prefix }}-npm-${{ runner.os }}-${{ hashFiles('bench/web-app/package-lock.json') }}
+
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cache Playwright browsers
+        id: browsers
+        if: ${{ inputs.variant == 'full' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ inputs.cache-prefix }}-pw-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # --- ここから計測対象の工程（全 variant 共通の step 名） ---
+      - name: Install dependencies
+        env:
+          HIT: ${{ steps.nm.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$HIT" = "true" ]; then
+            echo "node_modules restored from cache; skip npm ci"
+          else
+            npm ci --no-audit --no-fund
+          fi
+
+      - name: Install Playwright browsers
+        env:
+          HIT: ${{ steps.browsers.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$HIT" = "true" ]; then
+            # ブラウザ本体はキャッシュから復元済み。OS 依存パッケージ（apt）はキャッシュできないので入れる
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: E2E
+        run: npm run e2e
+
+      # --- report 用のメタ情報（キャッシュの hit/miss） ---
+      - name: Write metadata
+        env:
+          PHASE: ${{ inputs.phase }}
+          ITERATION: ${{ inputs.iteration }}
+          HIT_NM: ${{ steps.nm.outputs.cache-hit }}
+          HIT_NPM: ${{ steps.npm.outputs.cache-hit }}
+          HIT_BROWSERS: ${{ steps.browsers.outputs.cache-hit }}
+          HIT_SETUP_NODE: ${{ steps.setup-node.outputs.cache-hit }}
+          PW_VERSION: ${{ steps.pw.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/meta"
+          python3 - <<'PY' > "$RUNNER_TEMP/meta/${VARIANT}-${PHASE}-${ITERATION}.json"
+          import json, os, platform
+          e = os.environ
+          print(json.dumps({
+              "job": f"{e['VARIANT']}-{e['PHASE']}-{e['ITERATION']}",
+              "variant": e["VARIANT"], "phase": e["PHASE"], "iteration": int(e["ITERATION"]),
+              "cache_hit": {
+                  "node_modules": e.get("HIT_NM", ""), "npm": e.get("HIT_NPM", ""),
+                  "playwright": e.get("HIT_BROWSERS", ""), "setup_node_npm": e.get("HIT_SETUP_NODE", ""),
+              },
+              "playwright_version": e.get("PW_VERSION", ""),
+              "node_version": os.popen("node -v").read().strip(),
+              "image": e.get("ImageOS", "") + " " + e.get("ImageVersion", ""),
+          }))
+          PY
+
+      - name: Upload metadata
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-meta-${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
+          path: ${{ runner.temp }}/meta/
+          retention-days: 1
