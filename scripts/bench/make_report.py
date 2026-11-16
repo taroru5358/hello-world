@@ -313,6 +313,8 @@ def hit_badge(v: str) -> str:
 
 
 def overlap(a: dict, b: dict) -> bool:
+    if min(a["n"], b["n"]) < 2:
+        return True  # 1 回だけでは範囲が分からないので、差を断定しない
     return not (a["max"] < b["min"] or b["max"] < a["min"])
 
 
@@ -329,6 +331,10 @@ def cache_table(agg: dict, app: str) -> str:
             full["caches_max"][k] < none["caches_min"][k]
             or none["caches_max"][k] < full["caches_min"][k]
         )
+        if min(none["n"], full["n"]) < 2:
+            judge = "回数不足（2 回以上で判定）"
+        else:
+            judge = "はっきり差あり" if clear else "ばらつきの範囲"
         cls = "good" if d >= 1 else "bad" if d <= -1 else ""
         sign = "−" if d >= 0 else "＋"
         rows.append(
@@ -336,7 +342,7 @@ def cache_table(agg: dict, app: str) -> str:
             f"<td class='num'>{fmt(a)}</td><td class='num'>{fmt(b)}</td>"
             f"<td class='num {cls}'>{sign}{fmt(abs(d))}</td>"
             f"<td class='num {cls}'>{pct:.0f}%</td>"
-            f"<td>{'はっきり差あり' if clear else 'ばらつきの範囲'}</td></tr>"
+            f"<td>{judge}</td></tr>"
         )
     return (
         "<div class='table-wrap'><table class='cache'>"
@@ -382,7 +388,7 @@ def takeaways(agg: dict, app: str) -> list[str]:
     worse = [f"{n}（＋{fmt(-g)}）" for g, _, n in gains if g <= -1]
     if worse:
         out.append(
-            "逆に、キャッシュの復元・保存の分だけ遅くなったもの: "
+            "逆に、キャッシュありの方が長かったもの（復元・保存のコストか、ばらつき）: "
             + "、".join(worse)
             + "。"
         )
