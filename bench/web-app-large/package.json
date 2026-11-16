@@ -1,0 +1,61 @@
+{
+  "name": "cache-bench-web-app-large",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "lint": "eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/",
+    "typecheck": "tsc -p tsconfig.json --noEmit false --incremental --tsBuildInfoFile node_modules/.cache/tsc/tsbuildinfo --outDir node_modules/.cache/tsc/out",
+    "test": "vitest run",
+    "build": "vite build",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
+    "@storybook/react-vite": "^10.6.7",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/lodash-es": "^4.17.12",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "@vitest/coverage-v8": "^5.1.0",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^31.0.1",
+    "msw": "^3.0.6",
+    "prettier": "^3.10.1",
+    "storybook": "^10.6.7",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.5.0",
+    "@mui/material": "^9.5.0",
+    "@tanstack/react-query": "^5.107.1",
+    "axios": "^1.21.1",
+    "date-fns": "^4.4.0",
+    "i18next": "^27.1.3",
+    "lodash-es": "^4.18.1",
+    "motion": "^14.14.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.92.0",
+    "react-i18next": "^18.0.2",
+    "react-router": "^8.5.1",
+    "recharts": "^3.10.1",
+    "zod": "^4.6.7"
+  },
+  "overrides": {
+    "minimatch": "^11.0.8",
+    "glob": "^14.0.6"
+  }
+}

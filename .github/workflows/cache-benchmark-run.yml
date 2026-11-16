@@ -5,6 +5,10 @@ name: Cache Benchmark (run)
 on:
   workflow_call:
     inputs:
+      app:
+        description: "small | large"
+        type: string
+        required: true
       variant:
         description: "none | setup-node | full"
         type: string
@@ -25,14 +29,16 @@ permissions:
 
 jobs:
   run:
-    name: ${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
+    name: ${{ inputs.app }}-${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      APP_DIR: ${{ inputs.app == 'large' && 'bench/web-app-large' || 'bench/web-app' }}
+      # run・app ごとに独立させたキャッシュキーの接頭辞
+      KEY: ${{ inputs.cache-prefix }}-${{ inputs.app }}
     defaults:
       run:
-        working-directory: bench/web-app
-    env:
-      VARIANT: ${{ inputs.variant }}
+        working-directory: ${{ inputs.app == 'large' && 'bench/web-app-large' || 'bench/web-app' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,7 +61,23 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: bench/web-app/package-lock.json
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # --- 大規模アプリはソースを生成する。warm では 1 ファイルだけ変更して差分 CI を再現する ---
+      - name: Generate sources
+        if: ${{ inputs.app == 'large' }}
+        run: node scripts/generate.mjs
+
+      - name: Simulate small change
+        if: ${{ inputs.phase == 'warm' }}
+        run: |
+          set -euo pipefail
+          if [ -d src/generated ]; then target=src/generated/f150/logic.ts; else target=src/todo.ts; fi
+          echo "export const BENCH_CHANGE = \"${GITHUB_RUN_ID}-${GITHUB_JOB}\";" >> "$target"
+          echo "changed: $target"
 
       # --- full のみ: actions/cache で各種キャッシュを復元 ---
       - name: Restore cache node_modules
@@ -64,8 +86,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # node_modules/.cache（ESLint・tsc）と node_modules/.vite（Vitest）も同梱される
-          path: bench/web-app/node_modules
-          key: ${{ inputs.cache-prefix }}-nm-${{ runner.os }}-node24-${{ hashFiles('bench/web-app/package-lock.json') }}
+          path: ${{ env.APP_DIR }}/node_modules
+          key: ${{ env.KEY }}-nm-${{ runner.os }}-node24-${{ hashFiles(format('{0}/package-lock.json', env.APP_DIR)) }}
 
       - name: Restore cache npm
         id: npm
@@ -73,7 +95,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
-          key: ${{ inputs.cache-prefix }}-npm-${{ runner.os }}-${{ hashFiles('bench/web-app/package-lock.json') }}
+          key: ${{ env.KEY }}-npm-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', env.APP_DIR)) }}
 
       - name: Resolve Playwright version
         id: pw
@@ -85,7 +107,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ inputs.cache-prefix }}-pw-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: ${{ env.KEY }}-pw-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
       # --- ここから計測対象の工程（全 variant 共通の step 名） ---
       - name: Install dependencies
@@ -126,11 +148,36 @@ jobs:
       - name: E2E
         run: npm run e2e
 
+      # BuildKit の gha キャッシュ。scope を run・app ごとに分け、前回 run の残りを使わない
+      - name: Docker build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ env.APP_DIR }}
+          load: true
+          push: false
+          tags: bench-web:${{ inputs.app }}
+          cache-from: ${{ inputs.variant == 'full' && format('type=gha,scope={0}-docker', env.KEY) || '' }}
+          cache-to: ${{ inputs.variant == 'full' && format('type=gha,mode=max,scope={0}-docker', env.KEY) || '' }}
+
+      # trivy-action の内蔵キャッシュ（.cache/trivy を cache-trivy-<日付> で保存）。
+      # キーは run をまたいで共有されるため、cleanup job が run の最後に削除する
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: bench-web:${{ inputs.app }}
+          scanners: vuln
+          exit-code: "0"
+          format: table
+          hide-progress: true
+          cache: ${{ inputs.variant == 'full' && 'true' || 'false' }}
+
       # --- report 用のメタ情報（キャッシュの hit/miss） ---
       # actions/cache は miss 時に cache-hit を空文字で返すことがあるため、
       # 実行された step なら true/false、実行されなかった step は空にそろえる
       - name: Write metadata
         env:
+          APP: ${{ inputs.app }}
+          VARIANT: ${{ inputs.variant }}
           PHASE: ${{ inputs.phase }}
           ITERATION: ${{ inputs.iteration }}
           HIT_NM: ${{ steps.nm.outcome == 'success' && (steps.nm.outputs.cache-hit == 'true' && 'true' || 'false') || '' }}
@@ -141,18 +188,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/meta"
-          python3 - <<'PY' > "$RUNNER_TEMP/meta/${VARIANT}-${PHASE}-${ITERATION}.json"
-          import json, os, platform
+          python3 - <<'PY' > "$RUNNER_TEMP/meta/${APP}-${VARIANT}-${PHASE}-${ITERATION}.json"
+          import json, os
           e = os.environ
           print(json.dumps({
-              "job": f"{e['VARIANT']}-{e['PHASE']}-{e['ITERATION']}",
-              "variant": e["VARIANT"], "phase": e["PHASE"], "iteration": int(e["ITERATION"]),
+              "job": f"{e['APP']}-{e['VARIANT']}-{e['PHASE']}-{e['ITERATION']}",
+              "app": e["APP"], "variant": e["VARIANT"], "phase": e["PHASE"], "iteration": int(e["ITERATION"]),
               "cache_hit": {
                   "node_modules": e.get("HIT_NM", ""), "npm": e.get("HIT_NPM", ""),
                   "playwright": e.get("HIT_BROWSERS", ""), "setup_node_npm": e.get("HIT_SETUP_NODE", ""),
               },
               "playwright_version": e.get("PW_VERSION", ""),
               "node_version": os.popen("node -v").read().strip(),
+              "packages": sum(1 for k in json.load(open("package-lock.json"))["packages"] if k.startswith("node_modules/")),
               "image": e.get("ImageOS", "") + " " + e.get("ImageVersion", ""),
           }))
           PY
@@ -160,6 +208,6 @@ jobs:
       - name: Upload metadata
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bench-meta-${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
+          name: bench-meta-${{ inputs.app }}-${{ inputs.variant }}-${{ inputs.phase }}-${{ inputs.iteration }}
           path: ${{ runner.temp }}/meta/
           retention-days: 1
