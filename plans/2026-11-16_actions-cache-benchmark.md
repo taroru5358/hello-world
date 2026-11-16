@@ -77,7 +77,7 @@ Web アプリのテスト（lint / 型チェック / unit test / build / E2E）�
 ## 結果（完了）
 
 - 最終 run: https://github.com/taroru5358/hello-world/actions/runs/43879399826 （iterations=5、19 job すべて成功）
-- レポート: `cache-benchmark-report.html`（artifact 14230739482、2027-02-14 まで保持）。About の Homepage に設定
+- 上記 run の数値を下に記録。結論文の注記を加えた後の再計測 run のレポートを About の Homepage に設定している（最新はそちらを参照）
 - warm 中央値: キャッシュなし 1分03秒 ／ setup-node の cache: npm だけ 42秒 ／ フル活用 52秒
   * フル活用は setup-node より遅かったが、各回の範囲は重なりばらつきの範囲内。依存が少ないアプリでは node_modules キャッシュの効果は小さい
   * ブラウザ本体をキャッシュしても apt の OS 依存インストールが残り、ブラウザ準備は 20 秒台
